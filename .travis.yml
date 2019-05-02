@@ -69,7 +69,7 @@ stages:
     if: type = push
   - name: cleanup
 
-jdk: "oraclejdk8"
+jdk: "openjdk9"
 jobs:
   include:
     # JDK9 profile
@@ -104,15 +104,8 @@ jobs:
       jdk: "openjdk9"
       script: ./tools/travis_controller.sh misc
       env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.11 -Djdk9"
-      name: misc
-    - if: type = push
-      jdk: "openjdk9"
-      stage: cleanup
-      script: ./tools/travis_controller.sh cleanup
-      env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.11 -Djdk9"
-      name: cleanup - jdk 9
+      name: misc - jdk 9
     # E2E profile
-    - stage: E2E
     - env: PROFILE="-De2e-metrics -Dinclude-kinesis -Djdk9"
       script: ./tools/travis/nightly.sh split_misc_hadoopfree.sh
       name: misc
