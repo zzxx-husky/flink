@@ -18,8 +18,10 @@
 
 package org.apache.flink.runtime.jobmaster.slotpool;
 
+import com.esotericsoftware.minlog.Log;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
@@ -178,6 +180,7 @@ public class SchedulerImpl implements Scheduler {
 				return FutureUtils.completedExceptionally(e);
 			}
 		} else if (allowQueuedScheduling) {
+			Log.info("Invocation of allocateSingleSlot.");
 			// we allocate by requesting a new slot
 			return slotPool
 				.requestNewAllocatedSlot(slotRequestId, slotProfile.getResourceProfile(), allocationTimeout)
@@ -451,14 +454,18 @@ public class SchedulerImpl implements Scheduler {
 		}
 
 		if (allowQueuedScheduling) {
+			Log.info("Invocation of allocateMultiTaskSlot.");
 			// there is no slot immediately available --> check first for uncompleted slots at the slot sharing group
 			SlotSharingManager.MultiTaskSlot multiTaskSlot = slotSharingManager.getUnresolvedRootSlot(groupId);
 
 			if (multiTaskSlot == null) {
 				// it seems as if we have to request a new slot from the resource manager, this is always the last resort!!!
+				ResourceProfile resProf = new ResourceProfile(slotProfile.getResourceProfile());
+				resProf.slotGroupId = groupId;
+
 				final CompletableFuture<PhysicalSlot> slotAllocationFuture = slotPool.requestNewAllocatedSlot(
 					allocatedSlotRequestId,
-					slotProfile.getResourceProfile(),
+					resProf,
 					allocationTimeout);
 
 				multiTaskSlot = slotSharingManager.createRootSlot(

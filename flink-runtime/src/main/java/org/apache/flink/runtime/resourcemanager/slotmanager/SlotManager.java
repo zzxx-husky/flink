@@ -37,6 +37,7 @@ import org.apache.flink.runtime.taskexecutor.SlotStatus;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskexecutor.exceptions.SlotAllocationException;
 import org.apache.flink.runtime.taskexecutor.exceptions.SlotOccupiedException;
+import org.apache.flink.util.AbstractID;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
 
@@ -46,20 +47,14 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 /**
  * The slot manager is responsible for maintaining a view on all registered task manager slots,
@@ -294,6 +289,7 @@ public class SlotManager implements AutoCloseable {
 			pendingSlotRequests.put(slotRequest.getAllocationId(), pendingSlotRequest);
 
 			try {
+        LOG.info("Invocation of internalRequestSlot");
 				internalRequestSlot(pendingSlotRequest);
 			} catch (ResourceManagerException e) {
 				// requesting the slot failed --> remove pending slot request
@@ -500,7 +496,37 @@ public class SlotManager implements AutoCloseable {
 	 * @return A matching slot which fulfills the given resource profile. Null if there is no such
 	 * slot available.
 	 */
+	// a mapping from slot group id to task manager
+	private Map<AbstractID, InstanceID> slotGroup2TaskManager = new HashMap<>();
+	private Set<InstanceID> unassignedInstances = new HashSet<>();
+	private Set<InstanceID> assignedInstances = new HashSet<>();
+
 	protected TaskManagerSlot findMatchingSlot(ResourceProfile requestResourceProfile) {
+    LOG.info("To find matching slot for group " + requestResourceProfile.slotGroupId);
+		InstanceID expectedInstance = null;
+
+		if (requestResourceProfile.slotGroupId != null) {
+			if (!slotGroup2TaskManager.containsKey(requestResourceProfile.slotGroupId)) {
+				if (unassignedInstances.isEmpty()) {
+					unassignedInstances = freeSlots.values().stream().map(TaskManagerSlot::getInstanceId).collect(Collectors.toSet());
+					unassignedInstances.removeAll(assignedInstances);
+				}
+				Optional<InstanceID> head = unassignedInstances.stream().findFirst();
+				if (head.isPresent()) {
+					slotGroup2TaskManager.put(requestResourceProfile.slotGroupId, head.get());
+          LOG.info("Assign instance " + head.get() + " to " + requestResourceProfile.slotGroupId);
+					unassignedInstances.remove(head.get());
+					assignedInstances.add(head.get());
+				} else {
+					throw new RuntimeException("Cannot find anymore unassigned task managers!");
+				}
+			}
+			expectedInstance = slotGroup2TaskManager.get(requestResourceProfile.slotGroupId);
+			if (expectedInstance == null) {
+				throw new RuntimeException("No task manager can be assigned to slot group " + requestResourceProfile.slotGroupId.toString());
+			}
+		}
+
 		Iterator<Map.Entry<SlotID, TaskManagerSlot>> iterator = freeSlots.entrySet().iterator();
 
 		while (iterator.hasNext()) {
@@ -512,7 +538,8 @@ public class SlotManager implements AutoCloseable {
 				"TaskManagerSlot %s is not in state FREE but %s.",
 				taskManagerSlot.getSlotId(), taskManagerSlot.getState());
 
-			if (taskManagerSlot.getResourceProfile().isMatching(requestResourceProfile)) {
+			if (taskManagerSlot.getResourceProfile().isMatching(requestResourceProfile) &&
+				(expectedInstance == null || expectedInstance == taskManagerSlot.getInstanceId())) {
 				iterator.remove();
 				return taskManagerSlot;
 			}
