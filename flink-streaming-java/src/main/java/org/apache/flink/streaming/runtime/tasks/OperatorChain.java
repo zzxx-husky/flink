@@ -51,6 +51,7 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusProvider;
 import org.apache.flink.util.OutputTag;
 import org.apache.flink.util.XORShiftRandom;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -122,7 +123,8 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 					recordWriters.get(i),
 					outEdge,
 					chainedConfigs.get(outEdge.getSourceId()),
-					containingTask.getEnvironment());
+					containingTask.getEnvironment(),
+                    containingTask.getMetricsManager());
 
 				this.streamOutputs[i] = streamOutput;
 				streamOutputMap.put(outEdge, streamOutput);
@@ -392,7 +394,8 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			RecordWriter<SerializationDelegate<StreamRecord<OUT>>> recordWriter,
 			StreamEdge edge,
 			StreamConfig upStreamConfig,
-			Environment taskEnvironment) {
+			Environment taskEnvironment,
+            MetricsManager metricsManager) {
 		OutputTag sideOutputTag = edge.getOutputTag(); // OutputTag, return null if not sideOutput
 
 		TypeSerializer outSerializer = null;
@@ -406,7 +409,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			outSerializer = upStreamConfig.getTypeSerializerOut(taskEnvironment.getUserClassLoader());
 		}
 
-		return new RecordWriterOutput<>(recordWriter, outSerializer, sideOutputTag, this);
+		return new RecordWriterOutput<>(recordWriter, outSerializer, sideOutputTag, this,metricsManager);
 	}
 
 	// ------------------------------------------------------------------------

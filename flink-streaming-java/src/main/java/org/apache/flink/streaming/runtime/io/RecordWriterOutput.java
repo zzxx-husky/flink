@@ -34,6 +34,7 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusProvider;
 import org.apache.flink.streaming.runtime.tasks.OperatorChain;
 import org.apache.flink.util.OutputTag;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 
 import java.io.IOException;
 
@@ -60,7 +61,8 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 			RecordWriter<SerializationDelegate<StreamRecord<OUT>>> recordWriter,
 			TypeSerializer<OUT> outSerializer,
 			OutputTag outputTag,
-			StreamStatusProvider streamStatusProvider) {
+			StreamStatusProvider streamStatusProvider,
+            MetricsManager metricsManager) {
 
 		checkNotNull(recordWriter);
 		this.outputTag = outputTag;
@@ -68,6 +70,8 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 		// with multiplexed records and watermarks
 		this.recordWriter = (RecordWriter<SerializationDelegate<StreamElement>>)
 				(RecordWriter<?>) recordWriter;
+
+        this.recordWriter.setMetricsManager(metricsManager);
 
 		TypeSerializer<StreamElement> outRecordSerializer =
 				new StreamElementSerializer<>(outSerializer);

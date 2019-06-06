@@ -57,6 +57,8 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
 
+import org.apache.flink.runtime.util.profiling.MetricsManager;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -520,6 +522,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	public String getName() {
 		return getEnvironment().getTaskInfo().getTaskNameWithSubtasks();
 	}
+
+    public MetricsManager getMetricsManager() {
+        return getEnvironment().getMetricsManager();
+    }
 
 	/**
 	 * Gets the lock object on which all operations that involve data and state mutation have to lock.
