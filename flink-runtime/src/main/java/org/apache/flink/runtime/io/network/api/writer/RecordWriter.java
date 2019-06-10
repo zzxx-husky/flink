@@ -28,8 +28,8 @@ import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSeria
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
-import org.apache.flink.util.XORShiftRandom;
 import org.apache.flink.runtime.util.profiling.MetricsManager;
+import org.apache.flink.util.XORShiftRandom;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,7 +75,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	private Counter numBytesOut = new SimpleCounter();
 
-    private MetricsManager metricsManager;
+	private MetricsManager metricsManager;
 
 	private Counter numBuffersOut = new SimpleCounter();
 
@@ -161,14 +161,14 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	private void emit(T record, int targetChannel) throws IOException, InterruptedException {
 
-        metricsManager.incRecordsOut();
+		metricsManager.incRecordsOut();
 
-        long start = System.nanoTime();
+		long start = System.nanoTime();
 
 		serializer.serializeRecord(record);
 
-        long end = System.nanoTime();
-        metricsManager.addSerialization(end - start);
+		long end = System.nanoTime();
+		metricsManager.addSerialization(end - start);
 
 		if (copyFromSerializerToTargetChannel(targetChannel)) {
 			serializer.prune();
@@ -192,8 +192,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 		while (result.isFullBuffer()) {
 			numBytesOut.inc(bufferBuilder.finish());
 			numBuffersOut.inc();
-
-            metricsManager.outputBufferFull(System.nanoTime());
+            
+			metricsManager.outputBufferFull(System.nanoTime());
 
 			// If this was a full record, we are done. Not breaking out of the loop at this point
 			// will lead to another buffer request before breaking out (that would not be a
@@ -231,8 +231,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 	}
 
 	public void flushAll() {
-        if (metricsManager != null) {
-            metricsManager.outputBufferFull(System.nanoTime());
+		if (metricsManager != null) {
+			metricsManager.outputBufferFull(System.nanoTime());
         }
 		targetPartition.flushAll();
 	}
@@ -251,9 +251,9 @@ public class RecordWriter<T extends IOReadableWritable> {
 		numBuffersOut = metrics.getNumBuffersOutCounter();
 	}
 
-    public void setMetricsManager(MetricsManager metricsManager) {
-        this.metricsManager = metricsManager;
-    }
+	public void setMetricsManager(MetricsManager metricsManager) {
+		this.metricsManager = metricsManager;
+	}
 
 	/**
 	 * Marks the current {@link BufferBuilder} as finished and clears the state for next one.
@@ -283,15 +283,15 @@ public class RecordWriter<T extends IOReadableWritable> {
 	private BufferBuilder requestNewBufferBuilder(int targetChannel) throws IOException, InterruptedException {
 		checkState(!bufferBuilders[targetChannel].isPresent() || bufferBuilders[targetChannel].get().isFinished());
 
-        long bufferStart = System.nanoTime();
+		long bufferStart = System.nanoTime();
 
 		BufferBuilder bufferBuilder = targetPartition.getBufferProvider().requestBufferBuilderBlocking();
 
-        long bufferEnd = System.nanoTime();
-        if (bufferEnd - bufferStart > 0) {
+		long bufferEnd = System.nanoTime();
+		if (bufferEnd - bufferStart > 0) {
         // add waiting duration to the MetricsManager
-            metricsManager.addWaitingForWriteBufferDuration(bufferEnd - bufferStart);
-        }
+			metricsManager.addWaitingForWriteBufferDuration(bufferEnd - bufferStart);
+		}
 
 		bufferBuilders[targetChannel] = Optional.of(bufferBuilder);
 		targetPartition.addBufferConsumer(bufferBuilder.createBufferConsumer(), targetChannel);
