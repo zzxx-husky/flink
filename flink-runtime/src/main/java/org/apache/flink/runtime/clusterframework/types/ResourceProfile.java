@@ -75,7 +75,7 @@ public class ResourceProfile implements Serializable, Comparable<ResourceProfile
 
 	// ------------------------------------------------------------------------
 
-	public String taskNameWithIndex = null;
+	public String instanceStrId = null;
 
 	/**
 	 * Creates a new ResourceProfile.

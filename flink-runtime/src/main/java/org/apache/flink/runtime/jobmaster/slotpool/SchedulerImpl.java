@@ -52,6 +52,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.io.*;
 
 /**
  * Scheduler that assigns tasks to slots. This class is currently work in progress, comments will be updated as we
@@ -79,6 +80,8 @@ public class SchedulerImpl implements Scheduler {
 	@Nonnull
 	private final Map<SlotSharingGroupId, SlotSharingManager> slotSharingManagers;
 
+    private Map<String, String> subtask2StrId = new HashMap<>();
+
 	public SchedulerImpl(
 		@Nonnull SlotSelectionStrategy slotSelectionStrategy,
 		@Nonnull SlotPool slotPool) {
@@ -90,6 +93,25 @@ public class SchedulerImpl implements Scheduler {
 		@Nonnull SlotSelectionStrategy slotSelectionStrategy,
 		@Nonnull SlotPool slotPool,
 		@Nonnull Map<SlotSharingGroupId, SlotSharingManager> slotSharingManagers) {
+
+
+		try {
+			File file = new File("/data/share/project/nova/flink_operator_placement.txt");
+
+			BufferedReader br = new BufferedReader(new FileReader(file));
+
+			String st;
+			while ((st = br.readLine()) != null) {
+				String taskName = st.split(",")[0];
+				String strId = st.split(",")[1];
+                subtask2StrId.put(taskName,strId);
+			}
+
+			br.close();
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 
 		this.slotSelectionStrategy = slotSelectionStrategy;
 		this.slotSharingManagers = slotSharingManagers;
@@ -471,7 +493,8 @@ public class SchedulerImpl implements Scheduler {
 			if (multiTaskSlot == null) {
 				// it seems as if we have to request a new slot from the resource manager, this is always the last resort!!!
 				ResourceProfile resProf = new ResourceProfile(slotProfile.getResourceProfile());
-				resProf.taskNameWithIndex = taskNameWithIndex;
+                // if taskNameWithIndex not in the map, then gives null, which flink will handle it as default
+				resProf.instanceStrId = subtask2StrId.get(taskNameWithIndex);
 
 				final CompletableFuture<PhysicalSlot> slotAllocationFuture = slotPool.requestNewAllocatedSlot(
 					allocatedSlotRequestId,
