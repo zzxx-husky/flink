@@ -267,12 +267,21 @@ public class SchedulerImpl implements Scheduler {
 					allowQueuedScheduling,
 					allocationTimeout);
 			} else {
+                /*
 				multiTaskSlotLocality = allocateMultiTaskSlot(
 					scheduledUnit.getJobVertexId(),
 					multiTaskSlotManager,
 					slotProfile,
 					allowQueuedScheduling,
 					allocationTimeout);
+                */
+				multiTaskSlotLocality = allocateMultiTaskSlotWithTaskName(
+					scheduledUnit.getJobVertexId(),
+					multiTaskSlotManager,
+					slotProfile,
+					allowQueuedScheduling,
+					allocationTimeout,
+                    scheduledUnit.getTaskToExecute().getVertex().getTaskNameWithSubtaskIndex());
 			}
 		} catch (NoResourceAvailableException noResourceException) {
 			return FutureUtils.completedExceptionally(noResourceException);
@@ -397,6 +406,112 @@ public class SchedulerImpl implements Scheduler {
 	 * @return A {@link SlotSharingManager.MultiTaskSlotLocality} which contains the allocated {@link SlotSharingManager.MultiTaskSlot}
 	 * 		and its locality wrt the given location preferences
 	 */
+	private SlotSharingManager.MultiTaskSlotLocality allocateMultiTaskSlotWithTaskName(
+		AbstractID groupId,
+		SlotSharingManager slotSharingManager,
+		SlotProfile slotProfile,
+		boolean allowQueuedScheduling,
+		Time allocationTimeout,
+        String taskNameWithIndex) throws NoResourceAvailableException {
+
+		Collection<SlotInfo> resolvedRootSlotsInfo = slotSharingManager.listResolvedRootSlotInfo(groupId);
+
+		SlotSelectionStrategy.SlotInfoAndLocality bestResolvedRootSlotWithLocality =
+			slotSelectionStrategy.selectBestSlotForProfile(resolvedRootSlotsInfo, slotProfile).orElse(null);
+
+		final SlotSharingManager.MultiTaskSlotLocality multiTaskSlotLocality = bestResolvedRootSlotWithLocality != null ?
+			new SlotSharingManager.MultiTaskSlotLocality(
+				slotSharingManager.getResolvedRootSlot(bestResolvedRootSlotWithLocality.getSlotInfo()),
+				bestResolvedRootSlotWithLocality.getLocality()) :
+			null;
+
+		if (multiTaskSlotLocality != null && multiTaskSlotLocality.getLocality() == Locality.LOCAL) {
+			return multiTaskSlotLocality;
+		}
+
+		final SlotRequestId allocatedSlotRequestId = new SlotRequestId();
+		final SlotRequestId multiTaskSlotRequestId = new SlotRequestId();
+
+		Optional<SlotAndLocality> optionalPoolSlotAndLocality = tryAllocateFromAvailable(allocatedSlotRequestId, slotProfile);
+
+		if (optionalPoolSlotAndLocality.isPresent()) {
+			SlotAndLocality poolSlotAndLocality = optionalPoolSlotAndLocality.get();
+			if (poolSlotAndLocality.getLocality() == Locality.LOCAL || bestResolvedRootSlotWithLocality == null) {
+
+				final PhysicalSlot allocatedSlot = poolSlotAndLocality.getSlot();
+				final SlotSharingManager.MultiTaskSlot multiTaskSlot = slotSharingManager.createRootSlot(
+					multiTaskSlotRequestId,
+					CompletableFuture.completedFuture(poolSlotAndLocality.getSlot()),
+					allocatedSlotRequestId);
+
+				if (allocatedSlot.tryAssignPayload(multiTaskSlot)) {
+					return SlotSharingManager.MultiTaskSlotLocality.of(multiTaskSlot, poolSlotAndLocality.getLocality());
+				} else {
+					multiTaskSlot.release(new FlinkException("Could not assign payload to allocated slot " +
+						allocatedSlot.getAllocationId() + '.'));
+				}
+			}
+		}
+
+		if (multiTaskSlotLocality != null) {
+			// prefer slot sharing group slots over unused slots
+			if (optionalPoolSlotAndLocality.isPresent()) {
+				slotPool.releaseSlot(
+					allocatedSlotRequestId,
+					new FlinkException("Locality constraint is not better fulfilled by allocated slot."));
+			}
+			return multiTaskSlotLocality;
+		}
+
+		if (allowQueuedScheduling) {
+			Log.info("Invocation of allocateMultiTaskSlot.");
+			// there is no slot immediately available --> check first for uncompleted slots at the slot sharing group
+			SlotSharingManager.MultiTaskSlot multiTaskSlot = slotSharingManager.getUnresolvedRootSlot(groupId);
+
+			if (multiTaskSlot == null) {
+				// it seems as if we have to request a new slot from the resource manager, this is always the last resort!!!
+				ResourceProfile resProf = new ResourceProfile(slotProfile.getResourceProfile());
+				resProf.taskNameWithIndex = taskNameWithIndex;
+
+				final CompletableFuture<PhysicalSlot> slotAllocationFuture = slotPool.requestNewAllocatedSlot(
+					allocatedSlotRequestId,
+					resProf,
+					allocationTimeout);
+
+				multiTaskSlot = slotSharingManager.createRootSlot(
+					multiTaskSlotRequestId,
+					slotAllocationFuture,
+					allocatedSlotRequestId);
+
+				slotAllocationFuture.whenComplete(
+					(PhysicalSlot allocatedSlot, Throwable throwable) -> {
+						final SlotSharingManager.TaskSlot taskSlot = slotSharingManager.getTaskSlot(multiTaskSlotRequestId);
+
+						if (taskSlot != null) {
+							// still valid
+							if (!(taskSlot instanceof SlotSharingManager.MultiTaskSlot) || throwable != null) {
+								taskSlot.release(throwable);
+							} else {
+								if (!allocatedSlot.tryAssignPayload(((SlotSharingManager.MultiTaskSlot) taskSlot))) {
+									taskSlot.release(new FlinkException("Could not assign payload to allocated slot " +
+										allocatedSlot.getAllocationId() + '.'));
+								}
+							}
+						} else {
+							slotPool.releaseSlot(
+								allocatedSlotRequestId,
+								new FlinkException("Could not find task slot with " + multiTaskSlotRequestId + '.'));
+						}
+					});
+			}
+
+			return SlotSharingManager.MultiTaskSlotLocality.of(multiTaskSlot, Locality.UNKNOWN);
+		}
+
+		throw new NoResourceAvailableException("Could not allocate a shared slot for " + groupId + '.');
+	}
+
+
 	private SlotSharingManager.MultiTaskSlotLocality allocateMultiTaskSlot(
 		AbstractID groupId,
 		SlotSharingManager slotSharingManager,
@@ -461,7 +576,6 @@ public class SchedulerImpl implements Scheduler {
 			if (multiTaskSlot == null) {
 				// it seems as if we have to request a new slot from the resource manager, this is always the last resort!!!
 				ResourceProfile resProf = new ResourceProfile(slotProfile.getResourceProfile());
-				resProf.slotGroupId = groupId;
 
 				final CompletableFuture<PhysicalSlot> slotAllocationFuture = slotPool.requestNewAllocatedSlot(
 					allocatedSlotRequestId,

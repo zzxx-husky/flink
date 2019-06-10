@@ -56,6 +56,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
+import java.io.*;
+
 /**
  * The slot manager is responsible for maintaining a view on all registered task manager slots,
  * their allocation and all pending slot requests. Whenever a new slot is registered or and
@@ -117,6 +119,9 @@ public class SlotManager implements AutoCloseable {
 
 	/** Release task executor only when each produced result partition is either consumed or failed. */
 	private final boolean waitResultConsumedBeforeRelease;
+	
+    //private Map<String, String> subtask2TaskManager = new HashMap<>();
+    private Map<String, String> subtask2StrId = new HashMap<>();
 
 	public SlotManager(
 			ScheduledExecutor scheduledExecutor,
@@ -145,6 +150,26 @@ public class SlotManager implements AutoCloseable {
 		slotRequestTimeoutCheck = null;
 
 		started = false;
+
+		//initialize the map
+		try {
+			File file = new File("/data/share/project/nova/flink_operator_placement.txt");    
+
+			BufferedReader br = new BufferedReader(new FileReader(file));
+
+			String st;
+			while ((st = br.readLine()) != null) {
+				String taskName = st.split(",")[0];
+				String strId = st.split(",")[1];
+                subtask2StrId.put(taskName,strId);
+			}
+
+			br.close();
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
 	}
 
 	public int getNumberRegisteredSlots() {
@@ -497,33 +522,34 @@ public class SlotManager implements AutoCloseable {
 	 * slot available.
 	 */
 	// a mapping from slot group id to task manager
-	private Map<AbstractID, InstanceID> slotGroup2TaskManager = new HashMap<>();
-	private Set<InstanceID> unassignedInstances = new HashSet<>();
-	private Set<InstanceID> assignedInstances = new HashSet<>();
+	
+    private Map<String, InstanceID> strId2TaskManager = new HashMap<>();
+    private Set<InstanceID> unassignedInstances = new HashSet<>();
+    private Set<InstanceID> assignedInstances = new HashSet<>();
 
 	protected TaskManagerSlot findMatchingSlot(ResourceProfile requestResourceProfile) {
-    LOG.info("To find matching slot for group " + requestResourceProfile.slotGroupId);
 		InstanceID expectedInstance = null;
 
-		if (requestResourceProfile.slotGroupId != null) {
-			if (!slotGroup2TaskManager.containsKey(requestResourceProfile.slotGroupId)) {
+		if (requestResourceProfile.taskNameWithIndex!= null && subtask2StrId.containsKey(requestResourceProfile.taskNameWithIndex)) {
+            String strId = subtask2StrId.get(requestResourceProfile.taskNameWithIndex);
+            if (!strId2TaskManager.containsKey(strId)) {
 				if (unassignedInstances.isEmpty()) {
 					unassignedInstances = freeSlots.values().stream().map(TaskManagerSlot::getInstanceId).collect(Collectors.toSet());
 					unassignedInstances.removeAll(assignedInstances);
 				}
 				Optional<InstanceID> head = unassignedInstances.stream().findFirst();
 				if (head.isPresent()) {
-					slotGroup2TaskManager.put(requestResourceProfile.slotGroupId, head.get());
-          LOG.info("Assign instance " + head.get() + " to " + requestResourceProfile.slotGroupId);
+					strId2TaskManager.put(strId, head.get());
+					LOG.info("Assign instance " + head.get() + " to stringId " + strId);
 					unassignedInstances.remove(head.get());
 					assignedInstances.add(head.get());
 				} else {
 					throw new RuntimeException("Cannot find anymore unassigned task managers!");
 				}
-			}
-			expectedInstance = slotGroup2TaskManager.get(requestResourceProfile.slotGroupId);
+            }
+			expectedInstance = strId2TaskManager.get(strId);
 			if (expectedInstance == null) {
-				throw new RuntimeException("No task manager can be assigned to slot group " + requestResourceProfile.slotGroupId.toString());
+				throw new RuntimeException("No task manager can be assigned to slot group " + requestResourceProfile.taskNameWithIndex);
 			}
 		}
 

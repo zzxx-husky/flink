@@ -20,7 +20,6 @@ package org.apache.flink.runtime.clusterframework.types;
 
 import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.resources.Resource;
-import org.apache.flink.util.AbstractID;
 
 import javax.annotation.Nonnull;
 
@@ -76,7 +75,7 @@ public class ResourceProfile implements Serializable, Comparable<ResourceProfile
 
 	// ------------------------------------------------------------------------
 
-	public AbstractID slotGroupId = null;
+	public String taskNameWithIndex = null;
 
 	/**
 	 * Creates a new ResourceProfile.
