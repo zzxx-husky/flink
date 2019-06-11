@@ -59,6 +59,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
@@ -272,6 +273,7 @@ public class StreamMockEnvironment implements Environment {
 		return taskEventDispatcher;
 	}
 
+
 	@Override
 	public JobVertexID getJobVertexId() {
 		return new JobVertexID(new byte[16]);
@@ -345,4 +347,9 @@ public class StreamMockEnvironment implements Environment {
 	public TaskMetricGroup getMetricGroup() {
 		return UnregisteredMetricGroups.createUnregisteredTaskMetricGroup();
 	}
+        
+    @Override
+    public MetricsManager getMetricsManager() {
+        return null;
+    }
 }

@@ -49,6 +49,7 @@ import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
 import org.apache.flink.types.Record;
 import org.apache.flink.util.MutableObjectIterator;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 
 import java.util.Collections;
 import java.util.LinkedList;
@@ -355,4 +356,9 @@ public class MockEnvironment implements Environment, AutoCloseable {
 	public Optional<Throwable> getActualExternalFailureCause() {
 		return actualExternalFailureCause;
 	}
+
+    @Override
+    public MetricsManager getMetricsManager() {
+        return null;
+    }
 }
