@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *	 http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -118,8 +118,8 @@ public class SlotManager implements AutoCloseable {
 	/** Release task executor only when each produced result partition is either consumed or failed. */
 	private final boolean waitResultConsumedBeforeRelease;
 	
-    //private Map<String, String> subtask2TaskManager = new HashMap<>();
-    //private Map<String, String> subtask2StrId = new HashMap<>();
+	//private Map<String, String> subtask2TaskManager = new HashMap<>();
+	//private Map<String, String> subtask2StrId = new HashMap<>();
 
 	public SlotManager(
 			ScheduledExecutor scheduledExecutor,
@@ -292,7 +292,7 @@ public class SlotManager implements AutoCloseable {
 			pendingSlotRequests.put(slotRequest.getAllocationId(), pendingSlotRequest);
 
 			try {
-        LOG.info("Invocation of internalRequestSlot");
+		LOG.info("Invocation of internalRequestSlot");
 				internalRequestSlot(pendingSlotRequest);
 			} catch (ResourceManagerException e) {
 				// requesting the slot failed --> remove pending slot request
@@ -501,16 +501,16 @@ public class SlotManager implements AutoCloseable {
 	 */
 	// a mapping from slot group id to task manager
 	
-    private Map<String, InstanceID> strId2TaskManager = new HashMap<>();
-    private Set<InstanceID> unassignedInstances = new HashSet<>();
-    private Set<InstanceID> assignedInstances = new HashSet<>();
+	private Map<String, InstanceID> strId2TaskManager = new HashMap<>();
+	private Set<InstanceID> unassignedInstances = new HashSet<>();
+	private Set<InstanceID> assignedInstances = new HashSet<>();
 
 	protected TaskManagerSlot findMatchingSlot(ResourceProfile requestResourceProfile) {
 		InstanceID expectedInstance = null;
 
-		if (requestResourceProfile.instanceStrId!= null) {
-            String strId = requestResourceProfile.instanceStrId;
-            if (!strId2TaskManager.containsKey(strId)) {
+		if (requestResourceProfile.instanceStrId != null) {
+			String strId = requestResourceProfile.instanceStrId;
+			if (!strId2TaskManager.containsKey(strId)) {
 				if (unassignedInstances.isEmpty()) {
 					unassignedInstances = freeSlots.values().stream().map(TaskManagerSlot::getInstanceId).collect(Collectors.toSet());
 					unassignedInstances.removeAll(assignedInstances);
@@ -524,7 +524,7 @@ public class SlotManager implements AutoCloseable {
 				} else {
 					throw new RuntimeException("Cannot find anymore unassigned task managers!");
 				}
-            }
+			}
 			expectedInstance = strId2TaskManager.get(strId);
 			if (expectedInstance == null) {
 				throw new RuntimeException("No task manager can be assigned to slot group " + requestResourceProfile.instanceStrId);

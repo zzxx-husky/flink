@@ -30,15 +30,17 @@ public class DefaultSchedulerFactory implements SchedulerFactory {
 
 	@Nonnull
 	private final SlotSelectionStrategy slotSelectionStrategy;
+	public final String opPlacementPath;
 
-	public DefaultSchedulerFactory(@Nonnull SlotSelectionStrategy slotSelectionStrategy) {
+	public DefaultSchedulerFactory(@Nonnull SlotSelectionStrategy slotSelectionStrategy, String opPlacementPath) {
 		this.slotSelectionStrategy = slotSelectionStrategy;
+		this.opPlacementPath = opPlacementPath;
 	}
 
 	@Nonnull
 	@Override
 	public Scheduler createScheduler(@Nonnull SlotPool slotPool) {
-		return new SchedulerImpl(slotSelectionStrategy, slotPool);
+		return new SchedulerImpl(slotSelectionStrategy, slotPool, this.opPlacementPath);
 	}
 
 	@Nonnull
@@ -52,6 +54,8 @@ public class DefaultSchedulerFactory implements SchedulerFactory {
 
 	public static DefaultSchedulerFactory fromConfiguration(
 		@Nonnull Configuration configuration) {
-		return new DefaultSchedulerFactory(selectSlotSelectionStrategy(configuration));
+		return new DefaultSchedulerFactory(selectSlotSelectionStrategy(configuration),
+		  // one should specify the value of operator.placement.path in flink-conf.yaml
+			configuration.getString("operator.placement.path", ""));
 	}
 }
