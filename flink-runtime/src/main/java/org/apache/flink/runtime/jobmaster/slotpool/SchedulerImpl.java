@@ -80,37 +80,48 @@ public class SchedulerImpl implements Scheduler {
 	@Nonnull
 	private final Map<SlotSharingGroupId, SlotSharingManager> slotSharingManagers;
 
-    private Map<String, String> subtask2StrId = new HashMap<>();
+	private Map<String, String> subtask2StrId = new HashMap<>();
 
 	public SchedulerImpl(
 		@Nonnull SlotSelectionStrategy slotSelectionStrategy,
-		@Nonnull SlotPool slotPool) {
-		this(slotSelectionStrategy, slotPool, new HashMap<>(DEFAULT_SLOT_SHARING_MANAGERS_MAP_SIZE));
+		@Nonnull SlotPool slotPool,
+		String opPlacementPath) {
+		this(slotSelectionStrategy, slotPool, new HashMap<>(DEFAULT_SLOT_SHARING_MANAGERS_MAP_SIZE), opPlacementPath);
 	}
 
 	@VisibleForTesting
 	public SchedulerImpl(
 		@Nonnull SlotSelectionStrategy slotSelectionStrategy,
 		@Nonnull SlotPool slotPool,
-		@Nonnull Map<SlotSharingGroupId, SlotSharingManager> slotSharingManagers) {
+		@Nonnull Map<SlotSharingGroupId, SlotSharingManager> slotSharingManagers,
+		String opPlacementPath) {
 
+		if (!opPlacementPath.isEmpty()) {
+			try {
+				File file = new File(opPlacementPath);
+				if (!file.exists()) {
+					throw new RuntimeException("Failed to open operator placement file: " + opPlacementPath);
+				}
+				Log.info("Read operator placement from file: " + opPlacementPath);
 
-		try {
-			File file = new File("/data/share/project/nova/flink_operator_placement.txt");
+				BufferedReader br = new BufferedReader(new FileReader(file));
 
-			BufferedReader br = new BufferedReader(new FileReader(file));
+				String st;
+				while ((st = br.readLine().trim()) != null) {
+					if (st.isEmpty() || st.charAt(0) == '#') {
+						continue;
+					}
+					String taskName = st.split(",")[0].trim();
+					String strId = st.split(",")[1].trim();
+					subtask2StrId.put(taskName, strId);
+				}
 
-			String st;
-			while ((st = br.readLine()) != null) {
-				String taskName = st.split(",")[0];
-				String strId = st.split(",")[1];
-                subtask2StrId.put(taskName,strId);
+				br.close();
+			} catch (Exception e) {
+				e.printStackTrace();
 			}
-
-			br.close();
-
-		} catch (Exception e) {
-			e.printStackTrace();
+		} else {
+		  Log.info("Operator placement file is not specified");
 		}
 
 		this.slotSelectionStrategy = slotSelectionStrategy;
@@ -289,21 +300,21 @@ public class SchedulerImpl implements Scheduler {
 					allowQueuedScheduling,
 					allocationTimeout);
 			} else {
-                /*
+				/*
 				multiTaskSlotLocality = allocateMultiTaskSlot(
 					scheduledUnit.getJobVertexId(),
 					multiTaskSlotManager,
 					slotProfile,
 					allowQueuedScheduling,
 					allocationTimeout);
-                */
+				*/
 				multiTaskSlotLocality = allocateMultiTaskSlotWithTaskName(
 					scheduledUnit.getJobVertexId(),
 					multiTaskSlotManager,
 					slotProfile,
 					allowQueuedScheduling,
 					allocationTimeout,
-                    scheduledUnit.getTaskToExecute().getVertex().getTaskNameWithSubtaskIndex());
+					scheduledUnit.getTaskToExecute().getVertex().getTaskNameWithSubtaskIndex());
 			}
 		} catch (NoResourceAvailableException noResourceException) {
 			return FutureUtils.completedExceptionally(noResourceException);
@@ -434,7 +445,7 @@ public class SchedulerImpl implements Scheduler {
 		SlotProfile slotProfile,
 		boolean allowQueuedScheduling,
 		Time allocationTimeout,
-        String taskNameWithIndex) throws NoResourceAvailableException {
+		String taskNameWithIndex) throws NoResourceAvailableException {
 
 		Collection<SlotInfo> resolvedRootSlotsInfo = slotSharingManager.listResolvedRootSlotInfo(groupId);
 
@@ -493,8 +504,13 @@ public class SchedulerImpl implements Scheduler {
 			if (multiTaskSlot == null) {
 				// it seems as if we have to request a new slot from the resource manager, this is always the last resort!!!
 				ResourceProfile resProf = new ResourceProfile(slotProfile.getResourceProfile());
-                // if taskNameWithIndex not in the map, then gives null, which flink will handle it as default
-				resProf.instanceStrId = subtask2StrId.get(taskNameWithIndex);
+				// if taskNameWithIndex not in the map, then gives null, which flink will handle it as default
+				resProf.instanceStrId = subtask2StrId.isEmpty() ? null : subtask2StrId.get(taskNameWithIndex);
+				if (resProf.instanceStrId == null) {
+					  Log.info("Task with name " + taskNameWithIndex + " has not placement requirement");
+				} else {
+					  Log.info("Task with name " + taskNameWithIndex + " has placement requirement " + resProf.instanceStrId);
+				}
 
 				final CompletableFuture<PhysicalSlot> slotAllocationFuture = slotPool.requestNewAllocatedSlot(
 					allocatedSlotRequestId,
